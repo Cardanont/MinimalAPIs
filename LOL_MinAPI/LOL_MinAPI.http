@@ -1,0 +1,6 @@
+@LOL_MinAPI_HostAddress = http://localhost:5097
+
+GET {{LOL_MinAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
