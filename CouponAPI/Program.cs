@@ -1,7 +1,11 @@
+using AutoMapper;
+using CouponAPI;
 using CouponAPI.Data;
 using CouponAPI.Models;
 using CouponAPI.Models.DTO;
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddAutoMapper(typeof(MappingConfig));
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
 var app = builder.Build();
 
@@ -22,60 +28,79 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/api/coupon", (ILogger<Program> _logger) =>
 {
     _logger.LogInformation("Getting all Coupons!");
-    Results.Ok(CouponStore.couponList);
-}).WithName("GetCoupons").Produces<IEnumerable<Coupon>>(200);
+    APIResponse response = new();
+    response.Result = CouponStore.couponList;
+    response.IsSuccess = true;
+    response.StatusCode = HttpStatusCode.OK;
+
+    return Results.Ok(response);
+}).WithName("GetCoupons").Produces<APIResponse>(200);
 
 app.MapGet("/api/coupon/{id:int}", (int id) =>
 {
-    var coupon = CouponStore.couponList.FirstOrDefault(c => c.Id == id);
-    if (coupon == null)
-    {
-        return Results.NotFound();
-    }
-    return Results.Ok(coupon);
+    APIResponse response = new();
+    response.Result = CouponStore.couponList.FirstOrDefault(c => c.Id == id);
+    response.IsSuccess = true;
+    response.StatusCode = HttpStatusCode.OK;
 
-}).WithName("GetCoupon").Produces<Coupon>(200);
+    return Results.Ok(response);
 
-app.MapPost("/api/coupon", ([FromBody]CouponCreateDTO coupon_C_DTO) =>
+}).WithName("GetCoupon").Produces<APIResponse>(200);
+
+app.MapPost("/api/coupon", async (IMapper _mapper, 
+    IValidator <CouponCreateDTO> _validator, [FromBody] CouponCreateDTO coupon_C_DTO) =>
 {
-    if(string.IsNullOrEmpty(coupon_C_DTO.Name))
+    APIResponse response = new();
+    
+    var validationResult = await _validator.ValidateAsync(coupon_C_DTO);
+
+    if(!validationResult.IsValid)
     {
-        return Results.BadRequest("Invalid Id or coupon Name");
+        response.ErrorMessages.Add(validationResult.Errors.FirstOrDefault().ToString());
+        return Results.BadRequest(response);
     }
     if(CouponStore.couponList.FirstOrDefault(c => c.Name.ToLower() == coupon_C_DTO.Name.ToLower()) != null)
     {
-        return Results.BadRequest("Coupon Name already exists");
+        response.ErrorMessages.Add("Coupon Name already exists");
+        return Results.BadRequest(response);
     }
 
-    Coupon coupon = new()
-    {
-        IsActive = coupon_C_DTO.IsActive,
-        Name = coupon_C_DTO.Name,
-        Percent = coupon_C_DTO.Percent
-    };
+    Coupon coupon = _mapper.Map<Coupon>(coupon_C_DTO);
 
     coupon.Id = CouponStore.couponList.Max(c => c.Id) + 1;
     CouponStore.couponList.Add(coupon);
-    CouponDTO couponDTO = new()
-    {
-        Id = coupon.Id,
-        IsActive = coupon.IsActive,
-        Name = coupon.Name,
-        Percent = coupon.Percent,
-        Created = coupon.Created
-    };
-    return Results.CreatedAtRoute("GetCoupon",new { id = coupon.Id }, couponDTO);
-}).WithName("CreateCoupon").Accepts<CouponCreateDTO>("application/json").Produces<CouponDTO>(200).Produces(400);
+
+    CouponDTO couponDTO = _mapper.Map<CouponDTO>(coupon);
+
+    response.Result = couponDTO;
+    response.IsSuccess = true;
+    response.StatusCode = HttpStatusCode.Created;
+    
+    return Results.Ok(response);
+    //return Results.CreatedAtRoute("GetCoupon",new { id = coupon.Id }, couponDTO);
+}).WithName("CreateCoupon").Accepts<CouponCreateDTO>("application/json").Produces<APIResponse>(201).Produces(400);
 
 app.MapPut("/api/coupon/{id:int}", (int id) =>
 {
+
+
 
 });
 
 app.MapDelete("/api/coupon/{id:int}", (int id) =>
 {
-
-});
+    APIResponse response = new();
+    var coupon = CouponStore.couponList.FirstOrDefault(c => c.Id == id);
+    if(coupon == null)
+    {
+        response.ErrorMessages.Add("Coupon not found");
+        return Results.NotFound(response);
+    }
+    CouponStore.couponList.Remove(coupon);
+    response.IsSuccess = true;
+    response.StatusCode = HttpStatusCode.NoContent;
+    return Results.Ok(response);
+}).WithName("DeleteCoupon").Produces<APIResponse>(204).Produces(404);
 
 app.UseHttpsRedirection();
 
