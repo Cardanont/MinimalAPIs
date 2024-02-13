@@ -1,3 +1,7 @@
+using RPG_MinAPI.Data;
+using RPG_MinAPI.Models;
+using System.Net;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -14,31 +18,37 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.MapGet("/api/champion", (ILogger<Program> _logger) =>
+{
+    _logger.LogInformation("Gettitng all the Champions!");
+    APIResponse response = new();
+    response.Result = HallOfChampions.champions;
+    response.IsSuccess = true;
+    response.StatusCode = HttpStatusCode.OK;
+
+    return Results.Ok(response);
+}).WithName("GetChampions").Produces<APIResponse>(200);
+
+app.MapGet("/api/champion/{id:int}", (int Id) =>
+{
+    APIResponse response = new();
+    
+    if(HallOfChampions.champions.FirstOrDefault(c => c.Id == Id) == null)
+    {
+        response.IsSuccess = false;
+        response.StatusCode = HttpStatusCode.NotFound;
+        response.ErrorMessages.Add("Champion not found!");
+        return Results.NotFound(response);
+    }
+    else
+    {
+        response.Result = HallOfChampions.champions.FirstOrDefault(c => c.Id == Id);
+        response.IsSuccess = true;
+        response.StatusCode = HttpStatusCode.OK;
+    }
+
+    return Results.Ok(response);
+}).WithName("GetChampion").Produces<APIResponse>(200);
+
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
-
 app.Run();
-
-internal record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
